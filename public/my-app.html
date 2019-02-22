@@ -1,0 +1,196 @@
+<!--
+@license
+Copyright 2018, Google, Inc.
+Licensed under the Apache License, Version 2.0 (the 'License');
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+    http://www.apache.org/licenses/LICENSE-2.0
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an 'AS IS' BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+-->
+<link rel="import" href="bower_components/polymer/polymer.html">
+<link rel="import" href="bower_components/polymer/polymer-element.html">
+<link rel="import" href="bower_components/app-layout/app-header/app-header.html">
+<link rel="import" href="bower_components/app-layout/app-layout.html">
+<link rel="import" href="bower_components/app-layout/app-scroll-effects/app-scroll-effects.html">
+<link rel="import" href="bower_components/app-layout/app-toolbar/app-toolbar.html">
+<link rel="import" href="bower_components/iron-icons/iron-icons.html">
+<link rel="import" href="bower_components/iron-icons/editor-icons.html">
+<link rel="import" href="bower_components/iron-icons/places-icons.html">
+<link rel="import" href="bower_components/iron-list/iron-list.html">
+<link rel="import" href="bower_components/paper-button/paper-button.html">
+<link rel="import" href="bower_components/paper-dialog/paper-dialog.html">
+<link rel="import" href="bower_components/paper-icon-button/paper-icon-button.html">
+<link rel="import" href="bower_components/paper-tabs/paper-tabs.html">
+<link rel="import" href="bower_components/paper-toast/paper-toast.html">
+<link rel="import" href="bower_components/paper-progress/paper-progress.html">
+<link rel="import" href="bower_components/paper-item/paper-item.html">
+<link rel="import" href="bower_components/paper-dropdown-menu/paper-dropdown-menu.html">
+<link rel="import" href="bower_components/paper-listbox/paper-listbox.html">
+<script src="bower_components/webcomponentsjs/webcomponents-bundle.js"></script>
+
+<link rel="import" href="bar-graph.html">
+<link rel="import" href="line-graph.html">
+<link rel="import" href="app-scaffolding.html">
+<link rel="import" href="app-styles.html">
+<link rel="stylesheet" href="src/styles.css">
+
+<dom-module id="my-app">
+    <template>
+        <style include="app-styles">
+        </style>
+        <!-- Main content -->
+        <app-header condenses reveals effects="waterfall">
+            <app-toolbar>
+                <div main-title>SurveyBox</div>
+                <paper-progress value="0" bottom-item id='progress' class='slow red'></paper-progress>
+            </app-toolbar>
+        </app-header>
+
+        <template is="dom-if" if="{{sessionView}}">
+            <div id='graphs' class='content'>
+                <h1>{{currentEvent.name}}</h1>
+                <paper-tabs selected="0" scrollable id='day-tabs' no-bar>
+                    <template is="dom-repeat" items="{{currentEvent.days}}">
+                        <paper-tab class='day-tab' on-click="onDay">
+                            Day [[displayIndex(index)]] ([[item.label]])
+                        </paper-tab>
+                    </template>
+                </paper-tabs>
+                <h2>{{graphData.count}} Ratings</h2>
+                <h2>Bar Graph of Ratings</h2>
+
+                <paper-tabs selected="0" scrollable id='room-tabs' no-bar>
+                    <paper-tab class='room-tab' on-click="onRoom">All</paper-tab>
+                    <template is="dom-repeat" items="{{currentRooms}}">
+                        <paper-tab class='room-tab' on-click="onRoom">
+                            [[item.name]]
+                        </paper-tab>
+                    </template>
+                </paper-tabs>
+                <paper-tabs selected="0" scrollable id='session-tabs' no-bar>
+                    <paper-tab class='session-tab' on-click="onSession">All</paper-tab>
+                    <template is="dom-repeat" items="{{currentSessionsFiltered}}">
+                        <paper-tab class='session-tab' on-click="onSession">
+                            Session [[displayIndex(index)]]
+                            <sub>[[item.name]]</sub>
+                        </paper-tab>
+                    </template>
+                </paper-tabs>
+
+                <bar-graph data="" id="bar-graph"></bar-graph>
+
+                <h2>Line Graph of Ratings</h2>
+                <line-graph data="" id="line-graph"></line-graph>
+            </div>
+        </template>
+    </template>
+
+    <script>
+        class MyApp extends AppScaffolding {
+            static get is() { return 'my-app' }
+
+            static get properties() {
+                return {
+                    devices: {
+                        type: Array,
+                        value: []
+                    },
+                    events: {
+                        type: Array,
+                        value: []
+                    },
+                    currentEventKey: {
+                        type: String,
+                        value: 'default',
+                        observer: 'onEventChanged'
+                    },
+                    currentEvent: {
+                        type: Object,
+                        value: {
+                            days: [],
+                            name: "Default"
+                        }
+                    },
+                    currentLimitStart: {
+                        type: Number,
+                        value: 0
+                    },
+                    currentLimitEnd: {
+                        type: Number,
+                        value: 0
+                    },
+                    currentLimitRoom: {
+                        type: String,
+                        value: undefined
+                    },
+                    currentDay: {
+                        type: Number,
+                        value: 0
+                    },
+                    currentRooms: {
+                        type: Array,
+                        value: []
+                    },
+                    currentSessions: {
+                        type: Array,
+                        value: []
+                    },
+                    graphData: {
+                        type: Object,
+                        value: {
+                            count: 404,
+                            data: []
+                        }
+                    },
+                    appMode: {
+                        type: Number,
+                        value: 0,
+                        observer: 'onAppModeChanged'
+                    },
+                    sessionView: {
+                        type: Boolean,
+                        value: true
+                    },
+                }
+            }
+
+            static get observers() {
+                return [
+                    // Observer method name, followed by a list of dependencies, in parenthesis
+                    'onGraphChanged(graphData.data)', // Check direct changes
+                    'onGraphChanged(graphData.data.splices)', // Check array mutations
+                ]
+            }
+
+            onEventChanged(newValue, oldValue) {
+                this.updateEvent(newValue);
+                // Denote that the page is loading content
+                this.$.progress.indeterminate = true;
+                // Read data from Firebase
+                let pressRef = firebase.database().ref(`data/${newValue}`);
+                this.set('graphData.count', 0);
+                this.set('graphData.data', []);
+                pressRef.on('child_added', (snapshot) => {
+                    this.$.progress.indeterminate = true;
+                    let buttonPress = snapshot.val();
+                    this.set('graphData.count', this.graphData.count + 1);
+                    this.push('graphData.data', buttonPress);
+                    this.$.progress.indeterminate = false;
+                });
+            }
+
+            onGraphChanged(newValue, oldValue) {
+                window.requestAnimationFrame(() => {
+                    this.qc('bar-graph').set('data', newValue);
+                    this.qc('line-graph').set('data', newValue);
+                });
+            }
+        }
+
+        customElements.define(MyApp.is, MyApp);
+    </script>
+</dom-module>
